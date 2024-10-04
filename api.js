@@ -12,8 +12,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
 // Welcome endpoint
-app.get('/', (req, res) => {
-    res.json({ message: "Welcome to SaveFace APIv2!" });
+app.get('/welcome', (req, res) => {
+    res.json({ message: "Welcome to SaveFace API!" });
 });
 
 // Download endpoint
@@ -103,7 +103,13 @@ function cleanStr(str) {
     return JSON.parse(`{"text": "${str}"}`).text;
 }
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
+// Start server if this module is run directly
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`Server is running on http://localhost:${PORT}`);
+    });
+}
+
+// Export app for Vercel
+module.exports = app;
+                
