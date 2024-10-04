@@ -1,25 +1,18 @@
 const express = require('express');
-const bodyParser = require('body-parser');
 const axios = require('axios');
-const cors = require('cors');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Middleware
-app.use(cors());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
+app.use(express.json());
 
 // Welcome endpoint
-app.get('/', (req, res) => {
-    res.json({ message: "Welcome to SaveFace API!" });
+app.get('/welcome', (req, res) => {
+    res.json({ message: 'Welcome to the Facebook Video Downloader API!' });
 });
 
-// Download endpoint
+// Download endpoint using POST method
 app.post('/download', async (req, res) => {
     const msg = {};
-    const url = req.body.url; // Use req.body to get the POST data
+    const url = req.body.url; // Use req.body to get the URL from the POST request
 
     try {
         if (!url) {
@@ -69,47 +62,37 @@ app.post('/download', async (req, res) => {
 
 function generateId(url) {
     let id = '';
-    if (isInt(url)) {
-        id = url;
-    } else if (/\d+/.test(url)) {
-        id = url.match(/(\d+)/)[1];
+    const match = url.match(/(\d+)\/?$/);
+    if (match) {
+        id = match[1];
     }
     return id;
-}
-
-function isInt(value) {
-    return !isNaN(value) && Number.isInteger(parseFloat(value));
-}
-
-function getSDLink(curl_content) {
-    const regexRateLimit = /browser_native_sd_url":"([^"]+)"/;
-    const match = curl_content.match(regexRateLimit);
-    return match ? cleanStr(match[1]) : false;
-}
-
-function getHDLink(curl_content) {
-    const regexRateLimit = /browser_native_hd_url":"([^"]+)"/;
-    const match = curl_content.match(regexRateLimit);
-    return match ? cleanStr(match[1]) : false;
-}
-
-function getTitle(curl_content) {
-    const titleRegex = /<title>(.*?)<\/title>/;
-    const match = curl_content.match(titleRegex);
-    return match ? cleanStr(match[1]) : null;
 }
 
 function cleanStr(str) {
     return JSON.parse(`{"text": "${str}"}`).text;
 }
 
-// Start server if this module is run directly
-if (require.main === module) {
-    app.listen(PORT, () => {
-        console.log(`Server is running on http://localhost:${PORT}`);
-    });
+function getSDLink(content) {
+    const regexRateLimit = /browser_native_sd_url":"([^"]+)"/;
+    const match = content.match(regexRateLimit);
+    return match ? cleanStr(match[1]) : false;
 }
 
-// Export app for Vercel
+function getHDLink(content) {
+    const regexRateLimit = /browser_native_hd_url":"([^"]+)"/;
+    const match = content.match(regexRateLimit);
+    return match ? cleanStr(match[1]) : false;
+}
+
+function getTitle(content) {
+    let title = null;
+    const match = content.match(/<title>(.*?)<\/title>/) || content.match(/title id="pageTitle">(.+?)<\/title>/);
+    if (match) {
+        title = cleanStr(match[1]);
+    }
+    return title;
+}
+
+// Vercel will use this file as the entry point
 module.exports = app;
-                
