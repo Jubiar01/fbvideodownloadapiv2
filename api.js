@@ -1,18 +1,19 @@
 const express = require('express');
 const axios = require('axios');
-
 const app = express();
+const port = process.env.PORT || 3000;
+
 app.use(express.json());
 
 // Welcome endpoint
 app.get('/', (req, res) => {
-    res.json({ message: 'Welcome to the Facebook Video Downloader API - SaveFacev2Api!' });
+    res.json({ message: 'Welcome to the Facebook Video Downloader API!' });
 });
 
-// Download endpoint using POST method
-app.post('/download', async (req, res) => {
+// Download endpoint
+app.get('/download', async (req, res) => {
     const msg = {};
-    const url = req.body.url; // Use req.body to get the URL from the POST request
+    const url = req.query.url;
 
     try {
         if (!url) {
@@ -96,3 +97,4 @@ function getTitle(content) {
 
 // Vercel will use this file as the entry point
 module.exports = app;
+            
