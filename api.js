@@ -1,19 +1,25 @@
 const express = require('express');
+const bodyParser = require('body-parser');
 const axios = require('axios');
-const app = express();
-const port = process.env.PORT || 3000;
+const cors = require('cors');
 
-app.use(express.json());
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(cors());
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
 
 // Welcome endpoint
-app.get('/', (req, res) => {
-    res.json({ message: 'Welcome to the Facebook Video Downloader API!' });
+app.get('/welcome', (req, res) => {
+    res.json({ message: "Welcome to SaveFace API!" });
 });
 
 // Download endpoint
-app.get('/download', async (req, res) => {
+app.post('/download', async (req, res) => {
     const msg = {};
-    const url = req.query.url;
+    const url = req.body.url; // Use req.body to get the POST data
 
     try {
         if (!url) {
@@ -63,38 +69,41 @@ app.get('/download', async (req, res) => {
 
 function generateId(url) {
     let id = '';
-    const match = url.match(/(\d+)\/?$/);
-    if (match) {
-        id = match[1];
+    if (isInt(url)) {
+        id = url;
+    } else if (/\d+/.test(url)) {
+        id = url.match(/(\d+)/)[1];
     }
     return id;
+}
+
+function isInt(value) {
+    return !isNaN(value) && Number.isInteger(parseFloat(value));
+}
+
+function getSDLink(curl_content) {
+    const regexRateLimit = /browser_native_sd_url":"([^"]+)"/;
+    const match = curl_content.match(regexRateLimit);
+    return match ? cleanStr(match[1]) : false;
+}
+
+function getHDLink(curl_content) {
+    const regexRateLimit = /browser_native_hd_url":"([^"]+)"/;
+    const match = curl_content.match(regexRateLimit);
+    return match ? cleanStr(match[1]) : false;
+}
+
+function getTitle(curl_content) {
+    const titleRegex = /<title>(.*?)<\/title>/;
+    const match = curl_content.match(titleRegex);
+    return match ? cleanStr(match[1]) : null;
 }
 
 function cleanStr(str) {
     return JSON.parse(`{"text": "${str}"}`).text;
 }
 
-function getSDLink(content) {
-    const regexRateLimit = /browser_native_sd_url":"([^"]+)"/;
-    const match = content.match(regexRateLimit);
-    return match ? cleanStr(match[1]) : false;
-}
-
-function getHDLink(content) {
-    const regexRateLimit = /browser_native_hd_url":"([^"]+)"/;
-    const match = content.match(regexRateLimit);
-    return match ? cleanStr(match[1]) : false;
-}
-
-function getTitle(content) {
-    let title = null;
-    const match = content.match(/<title>(.*?)<\/title>/) || content.match(/title id="pageTitle">(.+?)<\/title>/);
-    if (match) {
-        title = cleanStr(match[1]);
-    }
-    return title;
-}
-
-// Vercel will use this file as the entry point
-module.exports = app;
-          
+// Start server
+app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+});
