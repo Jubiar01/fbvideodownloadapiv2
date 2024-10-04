@@ -5,8 +5,8 @@ const app = express();
 app.use(express.json());
 
 // Welcome endpoint
-app.get('/welcome', (req, res) => {
-    res.json({ message: 'Welcome to the Facebook Video Downloader API!' });
+app.get('/', (req, res) => {
+    res.json({ message: 'Welcome to the Facebook Video Downloader API - SaveFacev2Api!' });
 });
 
 // Download endpoint using POST method
