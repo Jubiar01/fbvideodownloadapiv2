@@ -12,8 +12,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
 // Welcome endpoint
-app.get('/welcome', (req, res) => {
-    res.json({ message: "Welcome to SaveFace API!" });
+app.get('/', (req, res) => {
+    res.json({ message: "Welcome to SaveFace APIv2!" });
 });
 
 // Download endpoint
