@@ -1,25 +1,48 @@
 const express = require('express');
 const axios = require('axios');
+const cors = require('cors');
+const morgan = require('morgan');
+const cache = require('memory-cache');
 const app = express();
 const port = process.env.PORT || 3000;
 
+app.use(cors());  // Enable CORS for all routes
 app.use(express.json());
+app.use(morgan('combined'));  // Log all requests
 
 // Welcome endpoint
 app.get('/', (req, res) => {
-    res.json({ message: 'Welcome to the Facebook Video Downloader API!' });
+    res.json({ message: 'Welcome to the enhanced Facebook Video Downloader API!' });
 });
 
-// Download endpoint
+// Helper function to validate Facebook video URLs
+function isValidFacebookURL(url) {
+    const regex = /https?:\/\/(www\.)?facebook\.com\/.*\/videos\/.*/;
+    return regex.test(url);
+}
+
+// Download endpoint with more features
 app.get('/download', async (req, res) => {
     const msg = {};
     const url = req.query.url;
 
-    try {
-        if (!url) {
-            throw new Error('Please provide the URL');
-        }
+    // Check if URL is provided
+    if (!url) {
+        return res.status(400).json({ success: false, message: 'Please provide a Facebook video URL.' });
+    }
 
+    // Validate the URL
+    if (!isValidFacebookURL(url)) {
+        return res.status(400).json({ success: false, message: 'Invalid Facebook video URL.' });
+    }
+
+    // Check cache
+    const cachedResponse = cache.get(url);
+    if (cachedResponse) {
+        return res.json(cachedResponse);
+    }
+
+    try {
         const headers = {
             'sec-fetch-user': '?1',
             'sec-ch-ua-mobile': '?0',
@@ -40,24 +63,37 @@ app.get('/download', async (req, res) => {
         msg.success = true;
         msg.id = generateId(url);
         msg.title = getTitle(response.data);
+        msg.duration = getDuration(response.data);  // Video duration
+        msg.thumbnail = getThumbnail(response.data);  // Video thumbnail
 
         const sdLink = getSDLink(response.data);
         if (sdLink) {
             msg.links = {
-                'Download Low Quality': `${sdLink}&dl=1`
+                'Download Low Quality': {
+                    url: `${sdLink}&dl=1`,
+                    resolution: 'SD',
+                    size: 'Unknown' // You could attempt to estimate size based on bitrate
+                }
             };
         }
 
         const hdLink = getHDLink(response.data);
         if (hdLink) {
-            msg.links['Download High Quality'] = `${hdLink}&dl=1`;
+            msg.links['Download High Quality'] = {
+                url: `${hdLink}&dl=1`,
+                resolution: 'HD',
+                size: 'Unknown'
+            };
         }
+
+        // Cache the response for future requests (10 min cache duration)
+        cache.put(url, msg, 10 * 60 * 1000);
 
         res.json(msg);
     } catch (error) {
         msg.success = false;
-        msg.message = error.message;
-        res.json(msg);
+        msg.message = 'Error downloading the video. ' + error.message;
+        res.status(500).json(msg);
     }
 });
 
@@ -93,6 +129,18 @@ function getTitle(content) {
         title = cleanStr(match[1]);
     }
     return title;
+}
+
+// New function to extract video duration from the page content
+function getDuration(content) {
+    const match = content.match(/"videoDuration":(\d+)/);
+    return match ? parseInt(match[1], 10) : 'Unknown';
+}
+
+// New function to extract video thumbnail
+function getThumbnail(content) {
+    const match = content.match(/"thumbnailUrl":"([^"]+)"/);
+    return match ? cleanStr(match[1]) : null;
 }
 
 // Vercel will use this file as the entry point
