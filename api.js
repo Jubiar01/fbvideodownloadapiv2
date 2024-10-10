@@ -36,6 +36,7 @@ app.get('/download', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid Facebook video or reel URL.' });
     }
 
+    // Check if the result is already cached
     const cachedResponse = cache.get(url);
     if (cachedResponse) {
         console.log(`Cache hit for URL: ${url}`);
@@ -61,6 +62,9 @@ app.get('/download', async (req, res) => {
         const response = await axios.get(url, { headers });
         const content = response.data;
 
+        // Log the content for debugging
+        console.log(content); 
+
         msg.success = true;
         msg.id = generateId(url);
         msg.title = sanitizeTitle(getTitle(content));
@@ -71,33 +75,65 @@ app.get('/download', async (req, res) => {
 
         const sdLink = getSDLink(content);
         if (sdLink) {
-            msg.links['Download SD'] = {
-                url: await shortenUrl(sdLink),
-                resolution: 'SD',
-                size: getFileSize(sdLink)
-            };
+            try {
+                msg.links['Download SD'] = {
+                    url: await shortenUrl(sdLink),
+                    resolution: 'SD',
+                    size: getFileSize(sdLink)
+                };
+            } catch (error) {
+                console.error('Error processing SD Link:', error);
+                // Optionally add the original sdLink to the response
+                msg.links['Download SD'] = {
+                    url: sdLink,
+                    resolution: 'SD',
+                    size: getFileSize(sdLink),
+                    error: 'URL shortening failed' 
+                };
+            }
         }
 
         const hdLink = getHDLink(content);
         if (hdLink) {
-            msg.links['Download HD'] = {
-                url: await shortenUrl(hdLink),
-                resolution: 'HD',
-                size: getFileSize(hdLink)
-            };
+            try {
+                msg.links['Download HD'] = {
+                    url: await shortenUrl(hdLink),
+                    resolution: 'HD',
+                    size: getFileSize(hdLink)
+                };
+            } catch (error) {
+                console.error('Error processing HD Link:', error);
+                msg.links['Download HD'] = {
+                    url: hdLink,
+                    resolution: 'HD',
+                    size: getFileSize(hdLink),
+                    error: 'URL shortening failed' 
+                };
+            }
         }
 
         if (!sdLink && !hdLink) {
             const genericLink = getGenericVideoLink(content);
             if (genericLink) {
-                msg.links['Download Video'] = {
-                    url: await shortenUrl(genericLink),
-                    resolution: 'Unknown',
-                    size: getFileSize(genericLink)
-                };
+                try {
+                    msg.links['Download Video'] = {
+                        url: await shortenUrl(genericLink),
+                        resolution: 'Unknown',
+                        size: getFileSize(genericLink)
+                    };
+                } catch (error) {
+                    console.error('Error processing Generic Link:', error);
+                    msg.links['Download Video'] = {
+                        url: genericLink,
+                        resolution: 'Unknown',
+                        size: getFileSize(genericLink),
+                        error: 'URL shortening failed' 
+                    };
+                }
             }
         }
 
+        // Cache the response for 10 minutes
         cache.put(url, msg, 10 * 60 * 1000);
         console.log(`Cache stored for URL: ${url}`);
 
