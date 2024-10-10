@@ -12,33 +12,35 @@ app.use(morgan('combined'));  // Log all requests
 
 // Welcome endpoint
 app.get('/', (req, res) => {
-    res.json({ message: 'Welcome to the enhanced Facebook Video Downloader API!' });
+    res.json({ message: 'Welcome to the enhanced Facebook Video & Reels Downloader API!' });
 });
 
-// Helper function to validate Facebook video URLs
+// Helper function to validate Facebook video and reel URLs
 function isValidFacebookURL(url) {
-    const regex = /https?:\/\/(www\.)?facebook\.com\/.*\/videos\/.*/;
+    const regex = /https?:\/\/(www\.)?facebook\.com\/.*\/(videos|reel)\/.*/;
     return regex.test(url);
 }
 
 // Download endpoint with more features
 app.get('/download', async (req, res) => {
+    const startTime = Date.now(); // Start timing the request
     const msg = {};
     const url = req.query.url;
 
     // Check if URL is provided
     if (!url) {
-        return res.status(400).json({ success: false, message: 'Please provide a Facebook video URL.' });
+        return res.status(400).json({ success: false, message: 'Please provide a Facebook video or reel URL.' });
     }
 
-    // Validate the URL
+    // Validate the URL (supports both regular videos and reels)
     if (!isValidFacebookURL(url)) {
-        return res.status(400).json({ success: false, message: 'Invalid Facebook video URL.' });
+        return res.status(400).json({ success: false, message: 'Invalid Facebook video or reel URL.' });
     }
 
     // Check cache
     const cachedResponse = cache.get(url);
     if (cachedResponse) {
+        console.log(`Cache hit for URL: ${url}`);
         return res.json(cachedResponse);
     }
 
@@ -62,17 +64,17 @@ app.get('/download', async (req, res) => {
 
         msg.success = true;
         msg.id = generateId(url);
-        msg.title = getTitle(response.data);
-        msg.duration = getDuration(response.data);  // Video duration
-        msg.thumbnail = getThumbnail(response.data);  // Video thumbnail
+        msg.title = sanitizeTitle(getTitle(response.data));
+        msg.author = getAuthor(response.data); // New: Author name
+        msg.published_time = getPublishedTime(response.data); // New: Published time
 
         const sdLink = getSDLink(response.data);
         if (sdLink) {
             msg.links = {
                 'Download Low Quality': {
-                    url: `${sdLink}&dl=1`,
+                    url: await shortenUrl(`${sdLink}&dl=1`), // Shortened download link
                     resolution: 'SD',
-                    size: 'Unknown' // You could attempt to estimate size based on bitrate
+                    size: 'Unknown'
                 }
             };
         }
@@ -80,7 +82,7 @@ app.get('/download', async (req, res) => {
         const hdLink = getHDLink(response.data);
         if (hdLink) {
             msg.links['Download High Quality'] = {
-                url: `${hdLink}&dl=1`,
+                url: await shortenUrl(`${hdLink}&dl=1`), // Shortened download link
                 resolution: 'HD',
                 size: 'Unknown'
             };
@@ -88,12 +90,17 @@ app.get('/download', async (req, res) => {
 
         // Cache the response for future requests (10 min cache duration)
         cache.put(url, msg, 10 * 60 * 1000);
+        console.log(`Cache stored for URL: ${url}`);
 
         res.json(msg);
     } catch (error) {
+        console.error(`Error fetching video: ${error.message}`);
         msg.success = false;
-        msg.message = 'Error downloading the video. ' + error.message;
+        msg.message = `Error downloading the video or reel. ${error.message}`;
         res.status(500).json(msg);
+    } finally {
+        const endTime = Date.now(); // End timing the request
+        console.log(`Request for ${url} took ${endTime - startTime}ms`);
     }
 });
 
@@ -111,36 +118,48 @@ function cleanStr(str) {
 }
 
 function getSDLink(content) {
-    const regexRateLimit = /browser_native_sd_url":"([^"]+)"/;
-    const match = content.match(regexRateLimit);
+    const regex = /browser_native_sd_url":"([^"]+)"/;
+    const match = content.match(regex);
     return match ? cleanStr(match[1]) : false;
 }
 
 function getHDLink(content) {
-    const regexRateLimit = /browser_native_hd_url":"([^"]+)"/;
-    const match = content.match(regexRateLimit);
+    const regex = /browser_native_hd_url":"([^"]+)"/;
+    const match = content.match(regex);
     return match ? cleanStr(match[1]) : false;
 }
 
 function getTitle(content) {
-    let title = null;
     const match = content.match(/<title>(.*?)<\/title>/) || content.match(/title id="pageTitle">(.+?)<\/title>/);
-    if (match) {
-        title = cleanStr(match[1]);
+    return match ? match[1] : 'Unknown Title';
+}
+
+// New function to sanitize video titles
+function sanitizeTitle(title) {
+    return title.replace(/[^a-zA-Z0-9\s]/g, '').trim();
+}
+
+// New function to extract the video author
+function getAuthor(content) {
+    const match = content.match(/"ownerName":"([^"]+)"/);
+    return match ? cleanStr(match[1]) : 'Unknown Author';
+}
+
+// New function to extract the published time
+function getPublishedTime(content) {
+    const match = content.match(/"publish_time":(\d+)/);
+    return match ? new Date(parseInt(match[1], 10) * 1000).toISOString() : 'Unknown';
+}
+
+// New function to shorten download links
+async function shortenUrl(longUrl) {
+    try {
+        const response = await axios.get(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`);
+        return response.data;
+    } catch (error) {
+        console.error('Error shortening URL:', error);
+        return longUrl; // Fallback to the original URL if shortening fails
     }
-    return title;
-}
-
-// New function to extract video duration from the page content
-function getDuration(content) {
-    const match = content.match(/"videoDuration":(\d+)/);
-    return match ? parseInt(match[1], 10) : 'Unknown';
-}
-
-// New function to extract video thumbnail
-function getThumbnail(content) {
-    const match = content.match(/"thumbnailUrl":"([^"]+)"/);
-    return match ? cleanStr(match[1]) : null;
 }
 
 // Vercel will use this file as the entry point
