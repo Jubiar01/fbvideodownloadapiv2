@@ -2,9 +2,9 @@
   "name": "facebook-video-downloader-api",
   "version": "1.0.0",
   "description": "Enhanced Facebook Video & Reels Downloader API",
-  "main": "api.js", 
+  "main": "api.js",  
   "scripts": {
-    "start": "node api.js" 
+    "start": "node api.js"  
   },
   "dependencies": {
     "axios": "^1.4.0",
