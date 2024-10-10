@@ -1,22 +1,18 @@
 {
   "name": "facebook-video-downloader-api",
-  "version": "1.1.0",
-  "description": "An improved API for downloading Facebook videos with enhanced features.",
-  "main": "api.js",
+  "version": "1.0.0",
+  "description": "Enhanced Facebook Video & Reels Downloader API",
+  "main": "api.js", 
   "scripts": {
-    "start": "node api.js",
-    "dev": "nodemon api.js"
+    "start": "node api.js" 
   },
   "dependencies": {
     "axios": "^1.4.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "memory-cache": "^0.2.0",
-    "morgan": "^1.10.0"
-  },
-  "devDependencies": {
-    "nodemon": "^2.0.22"
-  },
-  "author": "",
-  "license": "ISC"
+    "morgan": "^1.10.0",
+    "user-agents": "^2.2.0",
+    "xml2js": "^0.4.23"
+  }
 }
