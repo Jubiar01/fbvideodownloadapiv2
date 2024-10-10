@@ -77,9 +77,11 @@ app.get('/download', async (req, res) => {
         if (sdLink) {
             try {
                 msg.links['Download SD'] = {
-                    url: await shortenUrl(sdLink),
-                    resolution: 'SD',
-                    size: getFileSize(sdLink)
+                    const sdUrl = await shortenUrl(sdLink);
+            msg.links['Download SD'] = {
+                url: `${sdUrl}?dl=1`, // Append ?dl=1 to the URL
+                resolution: 'SD',
+                size: getFileSize(sdLink)
                 };
             } catch (error) {
                 console.error('Error processing SD Link:', error);
@@ -164,10 +166,8 @@ function cleanStr(str) {
 }
 
 function getSDLink(content) {
-    console.log('Content received:', content); // Log the content to check if it was fetched correctly
     const regex = /browser_native_sd_url":"([^"]+)"/;
     const match = content.match(regex);
-    console.log('Regex match:', match); // Log the match to see if the regex worked
     return match ? cleanStr(match[1]) : false;
 }
 
