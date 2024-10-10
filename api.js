@@ -128,8 +128,10 @@ function cleanStr(str) {
 }
 
 function getSDLink(content) {
+    console.log('Content received:', content); // Log the content to check if it was fetched correctly
     const regex = /browser_native_sd_url":"([^"]+)"/;
     const match = content.match(regex);
+    console.log('Regex match:', match); // Log the match to see if the regex worked
     return match ? cleanStr(match[1]) : false;
 }
 
