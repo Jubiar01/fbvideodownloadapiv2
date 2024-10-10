@@ -3,49 +3,47 @@ const axios = require('axios');
 const cors = require('cors');
 const morgan = require('morgan');
 const cache = require('memory-cache');
+const userAgent = require('user-agents');
+const { parseString } = require('xml2js'); // For proper XML conversion
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(cors());  // Enable CORS for all routes
+app.use(cors());
 app.use(express.json());
-app.use(morgan('combined'));  // Log all requests
+app.use(morgan('combined'));
 
-// Welcome endpoint
 app.get('/', (req, res) => {
     res.json({ message: 'Welcome to the enhanced Facebook Video & Reels Downloader API!' });
 });
 
-// Helper function to validate Facebook video and reel URLs
 function isValidFacebookURL(url) {
-    const regex = /https?:\/\/(www\.)?facebook\.com\/.*\/(videos|reel)\/.*/;
+    const regex = /https?:\/\/(www\.)?facebook\.com\/.*\/(videos|reel|posts|stories)\/.*/;
     return regex.test(url);
 }
 
-// Download endpoint with more features
 app.get('/download', async (req, res) => {
-    const startTime = Date.now(); // Start timing the request
+    const startTime = Date.now();
     const msg = {};
     const url = req.query.url;
+    const format = req.query.format || 'json';
 
-    // Check if URL is provided
     if (!url) {
         return res.status(400).json({ success: false, message: 'Please provide a Facebook video or reel URL.' });
     }
 
-    // Validate the URL (supports both regular videos and reels)
     if (!isValidFacebookURL(url)) {
         return res.status(400).json({ success: false, message: 'Invalid Facebook video or reel URL.' });
     }
 
-    // Check cache
     const cachedResponse = cache.get(url);
     if (cachedResponse) {
         console.log(`Cache hit for URL: ${url}`);
-        return res.json(cachedResponse);
+        return respondWithCorrectFormat(res, cachedResponse, format);
     }
 
     try {
         const headers = {
+            'User-Agent': new userAgent().toString(),
             'sec-fetch-user': '?1',
             'sec-ch-ua-mobile': '?0',
             'sec-fetch-site': 'none',
@@ -56,61 +54,70 @@ app.get('/download', async (req, res) => {
             'upgrade-insecure-requests': '1',
             'accept-language': 'en-GB,en;q=0.9,tr-TR;q=0.8,tr;q=0.7,en-US;q=0.6',
             'sec-ch-ua': '"Google Chrome";v="89", "Chromium";v="89", ";Not A Brand";v="99"',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.114 Safari/537.36',
             'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9'
         };
 
         const response = await axios.get(url, { headers });
+        const content = response.data;
 
         msg.success = true;
         msg.id = generateId(url);
-        msg.title = sanitizeTitle(getTitle(response.data));
-        msg.author = getAuthor(response.data); // New: Author name
-        msg.published_time = getPublishedTime(response.data); // New: Published time
+        msg.title = sanitizeTitle(getTitle(content));
+        msg.author = getAuthor(content);
+        msg.published_time = getPublishedTime(content);
+        msg.thumbnail = getThumbnail(content);
+        msg.links = {};
 
-        const sdLink = getSDLink(response.data);
+        const sdLink = getSDLink(content);
         if (sdLink) {
-            msg.links = {
-                'Download Low Quality': {
-                    url: await shortenUrl(`${sdLink}&dl=1`), // Shortened download link
-                    resolution: 'SD',
-                    size: 'Unknown'
-                }
+            msg.links['Download SD'] = {
+                url: await shortenUrl(sdLink),
+                resolution: 'SD',
+                size: getFileSize(sdLink)
             };
         }
 
-        const hdLink = getHDLink(response.data);
+        const hdLink = getHDLink(content);
         if (hdLink) {
-            msg.links['Download High Quality'] = {
-                url: await shortenUrl(`${hdLink}&dl=1`), // Shortened download link
+            msg.links['Download HD'] = {
+                url: await shortenUrl(hdLink),
                 resolution: 'HD',
-                size: 'Unknown'
+                size: getFileSize(hdLink)
             };
         }
 
-        // Cache the response for future requests (10 min cache duration)
+        if (!sdLink && !hdLink) {
+            const genericLink = getGenericVideoLink(content);
+            if (genericLink) {
+                msg.links['Download Video'] = {
+                    url: await shortenUrl(genericLink),
+                    resolution: 'Unknown',
+                    size: getFileSize(genericLink)
+                };
+            }
+        }
+
         cache.put(url, msg, 10 * 60 * 1000);
         console.log(`Cache stored for URL: ${url}`);
 
-        res.json(msg);
+        respondWithCorrectFormat(res, msg, format);
+
     } catch (error) {
         console.error(`Error fetching video: ${error.message}`);
         msg.success = false;
         msg.message = `Error downloading the video or reel. ${error.message}`;
         res.status(500).json(msg);
     } finally {
-        const endTime = Date.now(); // End timing the request
+        const endTime = Date.now();
         console.log(`Request for ${url} took ${endTime - startTime}ms`);
     }
 });
 
-// Helper functions
-
 function generateId(url) {
     let id = '';
-    const match = url.match(/(\d+)\/?$/);
+    const match = url.match(/(videos|reel|posts|stories)\/(\d+)/);
     if (match) {
-        id = match[1];
+        id = match[2];
     }
     return id;
 }
@@ -131,38 +138,75 @@ function getHDLink(content) {
     return match ? cleanStr(match[1]) : false;
 }
 
+function getGenericVideoLink(content) {
+    const regex = /video_url":"([^"]+)"/;
+    const match = content.match(regex);
+    return match ? cleanStr(match[1]) : false;
+}
+
 function getTitle(content) {
     const match = content.match(/<title>(.*?)<\/title>/) || content.match(/title id="pageTitle">(.+?)<\/title>/);
     return match ? match[1] : 'Unknown Title';
 }
 
-// New function to sanitize video titles
 function sanitizeTitle(title) {
     return title.replace(/[^a-zA-Z0-9\s]/g, '').trim();
 }
 
-// New function to extract the video author
 function getAuthor(content) {
     const match = content.match(/"ownerName":"([^"]+)"/);
     return match ? cleanStr(match[1]) : 'Unknown Author';
 }
 
-// New function to extract the published time
 function getPublishedTime(content) {
     const match = content.match(/"publish_time":(\d+)/);
     return match ? new Date(parseInt(match[1], 10) * 1000).toISOString() : 'Unknown';
 }
 
-// New function to shorten download links
+function getThumbnail(content) {
+    const regex = /og:image" content="([^"]+)"/;
+    const match = content.match(regex);
+    return match ? match[1] : 'Unknown';
+}
+
 async function shortenUrl(longUrl) {
     try {
         const response = await axios.get(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`);
         return response.data;
     } catch (error) {
         console.error('Error shortening URL:', error);
-        return longUrl; // Fallback to the original URL if shortening fails
+        return longUrl;
     }
 }
 
-// Vercel will use this file as the entry point
+function getFileSize(url) {
+    try {
+        const urlObj = new URL(url);
+        const fileSizeParam = urlObj.searchParams.get('filesize');
+        if (fileSizeParam) {
+            const fileSizeInBytes = parseInt(fileSizeParam, 10);
+            const fileSizeInKB = Math.round(fileSizeInBytes / 1024);
+            return `${fileSizeInKB} KB`;
+        }
+    } catch (error) {
+        console.error('Error getting file size:', error);
+    }
+    return 'Unknown';
+}
+
+function respondWithCorrectFormat(res, data, format) {
+    if (format.toLowerCase() === 'xml') {
+        parseString(JSON.stringify(data), (err, result) => {
+            if (err) {
+                console.error('Error converting to XML:', err);
+                return res.status(500).json({ success: false, message: 'Error converting to XML' });
+            }
+            res.set('Content-Type', 'application/xml');
+            res.send(result);
+        });
+    } else {
+        res.json(data);
+    }
+}
+
 module.exports = app;
