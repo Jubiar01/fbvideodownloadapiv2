@@ -4,8 +4,9 @@ const cors = require('cors');
 const morgan = require('morgan');
 const cache = require('memory-cache');
 const userAgent = require('user-agents');
-const { parseString } = require('xml2js'); // For proper XML conversion
+const { parseString } = require('xml2js');
 const app = express();
+
 const port = process.env.PORT || 3000;
 
 app.use(cors());
@@ -208,5 +209,9 @@ function respondWithCorrectFormat(res, data, format) {
         res.json(data);
     }
 }
+
+app.listen(port, () => {
+  console.log(`Server listening on port ${port}`);
+});
 
 module.exports = app;
